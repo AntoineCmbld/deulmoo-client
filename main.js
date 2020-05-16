@@ -185,6 +185,14 @@ function updateQuestions(payload) {
     })
 }
 
+function toggleCountersVisible() {
+    const counters = document.getElementsByClassName("deulmoo-count-span");
+    
+    for (const c of counters) {
+        c.style.display = c.style.display === "" ? "none" : "";
+    }
+}
+
 // ===========================
 // ========= DIGEST ==========
 // ===========================
@@ -260,6 +268,14 @@ function main() {
 
     // We fetch the current votes for the loaded questions
     httpGetVotes().then(updateQuestions);
+
+    // We want the ability to hide the graph, if we hit a the $ key
+    document.onkeypress = function (e) {
+        e = e || window.event;
+        if (e.keyCode === 36) {
+            toggleCountersVisible();
+        }
+    };
 }
 
 main();
