@@ -1,0 +1,12 @@
+{
+    "name": "Deulmoo",
+    "version": "1.0",
+    "description": "Collaborate on Moodle!",
+    "manifest_version": 2,
+    "content_scripts": [
+        {
+            "matches": ["https://*.fr/mod/quiz/attempt.php*", "https://*.fr/mod/quiz/review.php*"],
+            "js": ["./main.js"]
+        }
+    ]
+}
