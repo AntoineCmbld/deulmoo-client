@@ -1,11 +1,14 @@
 {
     "name": "Deulmoo",
-    "version": "20200517.0",
+    "version": "2020.05.17.0",
     "description": "Collaborate on Moodle!",
+    "icons": {
+        "128": "icon128.png"
+    },
     "manifest_version": 2,
     "content_scripts": [
         {
-            "matches": ["https://*.fr/mod/quiz/attempt.php*", "https://*.fr/mod/quiz/review.php*"],
+            "matches": ["https://*/mod/quiz/attempt.php*", "https://*/mod/quiz/review.php*"],
             "js": ["./main.js"]
         }
     ]
