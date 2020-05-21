@@ -1,9 +1,5 @@
-console.log('DeulMoo In!');
 // const WS_REMOTE_URL = 'ws://localhost:8080/';
-// const HTTP_REMOTE_URL = 'http://localhost:8080/';
-
 const WS_REMOTE_URL = 'wss://deulmoo.herokuapp.com/';
-const HTTP_REMOTE_URL = 'https://deulmoo.herokuapp.com/';
 
 // ===========================
 // ====== GLOBAL SOCKET ======
@@ -110,18 +106,11 @@ async function getAnswerBlockFromDigest(question_block, digest) {
 function sendSelectedAnswers(questionDigest, answerDigests) {
     const message = JSON.stringify({
         question: questionDigest,
-        answers: answerDigests
+        answers: answerDigests,
+        voter: getUniqueQuestioneeIdentifier()
     });
 
     getSocket().send(message);
-}
-
-// ===========================
-// ===== RECEIVING DATA ======
-// ===========================
-
-async function httpGetVotes() {
-    return fetch(HTTP_REMOTE_URL + 'votes').then(r => r.json());
 }
 
 // ===========================
@@ -135,7 +124,7 @@ function ensureCountDOMForAnwserDOM(answer_block) {
         // Create the counter DOM
         const span_dom = document.createElement('span');
         span_dom.className = 'deulmoo-count-span';
-        span_dom.innerText = ' ~ ..';
+        setAnswerCountNumber(span_dom, '..')
 
         answer_block.appendChild(span_dom);
     }
@@ -197,12 +186,40 @@ function toggleCountersVisible() {
 // ========= DIGEST ==========
 // ===========================
 
+// Source: MDN
 async function digestMessage(message) {
     const msgUint8 = new TextEncoder().encode(message);                           // encode as (utf-8) Uint8Array
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);           // hash the message
     const hashArray = Array.from(new Uint8Array(hashBuffer));                     // convert buffer to byte array
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join(''); // convert bytes to hex string
     return hashHex;
+}
+
+// ===========================
+// ====== URI PARSING ========
+// ===========================
+
+/**
+ * Get the URL parameters
+ * source: https://css-tricks.com/snippets/javascript/get-url-variables/
+ * @param  {String} url The URL
+ * @return {Object}     The URL parameters
+ */
+function getParams(url) {
+	const params = {};
+	const parser = document.createElement('a');
+	parser.href = url;
+	const query = parser.search.substring(1);
+	const vars = query.split('&');
+	for (let i = 0; i < vars.length; i++) {
+		const pair = vars[i].split('=');
+		params[pair[0]] = decodeURIComponent(pair[1]);
+	}
+	return params;
+}
+
+function getUniqueQuestioneeIdentifier() {
+    return getParams(location.href).attempt;
 }
   
 // ============================
@@ -264,10 +281,6 @@ function main() {
         }        
 
     } // => end of main init loop
-
-
-    // We fetch the current votes for the loaded questions
-    httpGetVotes().then(updateQuestions);
 
     // We want the ability to hide the graph, if we hit a the $ key
     document.onkeypress = function (e) {
