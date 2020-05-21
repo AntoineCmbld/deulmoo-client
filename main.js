@@ -80,8 +80,17 @@ function getQuestionBlockAnswersInputDOM(answer_block) {
 async function getQuestionBlockFromDigest(digest) {
     const question_blocks = getQuestionBlocks();
     for (const qb of question_blocks) {
-        const html = getQuestionBlockQuestionHTML(qb);
-        const questionDigest = await digestMessage(html);
+        let html, questionDigest;
+        
+        try {
+            html = getQuestionBlockQuestionHTML(qb);
+            questionDigest = await digestMessage(html);
+        } catch (e) {
+            console.warn(e);
+            console.log("Ignoring question block", qb);
+            continue;
+        }
+
         if (questionDigest === digest) {
             return qb;
         }
@@ -234,9 +243,16 @@ function main() {
     // listeners to them so you can submit your choices.
     // It will also create the DOM for the vote counter next to each answer
     for (const qb of question_blocks) {
-        const answers = getQuestionBlockAnswersDOM(qb);
-        const qhtml = getQuestionBlockQuestionHTML(qb);
-    
+        let answers, qhtml;
+
+        try {
+            answers = getQuestionBlockAnswersDOM(qb);
+            qhtml = getQuestionBlockQuestionHTML(qb);
+        } catch (e) {
+            console.warn("Deulmoo error on init: ", e);
+            console.log("Skipping question block as a result:", qb);
+            continue;
+        }
         
         for (const a of answers) {
             // Create the count span for the answer
