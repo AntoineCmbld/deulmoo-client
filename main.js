@@ -64,7 +64,11 @@ function getQuestionBlockAnswersHTML(answer_block) {
         throw new Error("Incorrect number of answer label tags: " + label_tag.length)
     }
 
-    return label_tag[0].innerHTML;
+    // The trick is, we have HTML like this
+    // <label for="q86:2_answer1" class="ml-1"><span class="answernumber">b. </span>a day</label>
+    // And in this example, we only want to return "a day" without the "answernumber"
+    const label_nodes = label_tag[0].childNodes;
+    return label_nodes.item(label_nodes.length - 1).nodeValue;
 }
 
 function getQuestionBlockAnswersInputDOM(answer_block) {
