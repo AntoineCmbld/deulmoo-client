@@ -7,14 +7,50 @@ const WS_REMOTE_URL = 'wss://deulmoo.herokuapp.com/';
 
 function getSocket() {
 
-    if (this.ws) return this.ws;
+    const fSocketAsPromise = () => {
+        return new Promise((resolve, reject) => {
+            this.working = true;
+            const ws = createNewSocket(WS_REMOTE_URL);
+            ws.onopen = () => {
+                // console.log("WS opened or reopened");
+                this.working = false;
+                resolve(ws);
+            };
 
-    this.ws = new WebSocket(WS_REMOTE_URL);
-    this.ws.onmessage = function (event) {
+            ws.onerror = (e) => {
+                console.warn("[Deulmoo] WS encounetred an error: ", e);
+                this.working = false;
+                reject(ws);
+            };
+        });
+    }
+
+    if (this.working) {
+        return this.promise;
+    }
+
+    if (this.ws) {
+        switch (this.ws.readyState) {
+            case WebSocket.CLOSED:
+            case WebSocket.CLOSING:
+                return this.promise = fSocketAsPromise().then(ws => this.ws = ws);
+            
+            default:
+                return Promise.resolve(this.ws);
+        }
+    }
+
+    return this.promise = fSocketAsPromise().then(ws => this.ws = ws);
+}
+
+function createNewSocket(remote_url) {
+    const ws = new WebSocket(WS_REMOTE_URL);
+    
+    ws.onmessage = function (event) {
         const raw_payload = event.data;
         const payload = JSON.parse(raw_payload);
         updateQuestions(payload);
-    }
+    };
 
     return ws;
 }
@@ -123,7 +159,7 @@ function sendSelectedAnswers(questionDigest, answerDigests) {
         voter: getUniqueQuestioneeIdentifier()
     });
 
-    getSocket().send(message);
+    getSocket().then(ws => ws.send(message));
 }
 
 // ===========================
@@ -240,7 +276,6 @@ function getUniqueQuestioneeIdentifier() {
 // ============================
 
 function main() {
-    getSocket(); // Will leave time for ws singleton to connect
     const question_blocks = getQuestionBlocks();
     
     // Main initialization loop. It will get the question input and attach event 
