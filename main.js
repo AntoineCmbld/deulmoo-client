@@ -278,7 +278,7 @@ function getUniqueQuestioneeIdentifier() {
 function main() {
     const question_blocks = getQuestionBlocks();
     
-    // Main initialization loop. It will get the question input and attach event 
+    // Main initialization loop. It will get the question inputs and attach event 
     // listeners to them so you can submit your choices.
     // It will also create the DOM for the vote counter next to each answer
     for (const qb of question_blocks) {
@@ -333,7 +333,7 @@ function main() {
                 default:
                     console.warn('Unsupported input type: ' + input.type);
             }
-        }        
+        }
 
     } // => end of main init loop
 
@@ -344,6 +344,9 @@ function main() {
             toggleCountersVisible();
         }
     };
+
+    // Will open a connection. When connected, will show the poll's current statistics
+    getSocket();
 }
 
 main();
