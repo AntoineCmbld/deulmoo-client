@@ -90,7 +90,7 @@ function getQuestionBlockAnswersDOM(question_block) {
         throw new Error("Incorrect number of answer tags: " + answer_block.length)
     }
 
-    return answer_block[0].getElementsByTagName('div');
+    return answer_block[0].children;
 }
 
 function getQuestionBlockAnswersHTML(answer_block) {
@@ -100,14 +100,45 @@ function getQuestionBlockAnswersHTML(answer_block) {
         throw new Error("Incorrect number of answer label tags: " + label_tag.length)
     }
 
-    // The trick is, we have HTML like this
-    // <label for="q86:2_answer1" class="ml-1"><span class="answernumber">b. </span>a day</label>
-    // And in this example, we only want to return "a day" without the "answernumber"
-    const label_nodes = label_tag[0].childNodes;
-    return label_nodes.item(label_nodes.length - 1).nodeValue;
+    /**
+     * The trick is, we have HTML like this
+     * <label for="q86:2_answer1" class="ml-1"><span class="answernumber">b. </span>a day</label>
+     * And in this example, we only want to return "a day" without the "answernumber"
+     * 
+     * We can also have monstrosities like so 
+     * <label for="q269633:31_answer0" class="ml-1">
+     *  <span class="answernumber">a. </span>
+     *  Some text<br>
+     *  <div class="editor-indent">
+     *      <span style="font-size: 0.9375rem;">More text</span>
+     *  </div>
+     * </label>
+     * 
+     * in which case we want to return "Some textMore text"
+     * 
+     * The only drawback of doing so is that if a node doesn't contain text at all (eg: pick an image)
+     * innerText will be empty everytime resulting in the same digest.
+     * 
+     * UPDATE: to counter this issue, I decided to return the full innerHTML but with the .answernumber
+     * tag removed
+     * 
+     */
+
+    const cp = document.createElement('span');
+    cp.innerHTML = label_tag[0].innerHTML;
+    cp.querySelectorAll('.answernumber').forEach(an => an.remove());
+
+    return cp.innerHTML;
 }
 
 function getQuestionBlockAnswersInputDOM(answer_block) {
+    // Sometimes, whn the answer is not a radio or checkbox choice, we can be given an input directly
+    // in this case, this is an expected situation, so we just return null to indicate we must move on
+    // and skip the block
+    if (answer_block.tagName !== 'DIV') {
+        return null;
+    }
+
     const input_tag = answer_block.getElementsByTagName('input');
 
     if (input_tag.length !== 1) {
@@ -294,8 +325,6 @@ function main() {
         }
         
         for (const a of answers) {
-            // Create the count span for the answer
-            ensureCountDOMForAnwserDOM(a);
             
             // We implement here the callback function since we use variables from the higher scope
             // When an input changes state, we re-send the values from the whole question block
@@ -322,8 +351,17 @@ function main() {
                     });
             }
 
+            // Create the count span for the answer
+            ensureCountDOMForAnwserDOM(a);
+
             const input = getQuestionBlockAnswersInputDOM(a);
 
+            if (input === null) {
+                // This is not a QCM, but a text field or other
+                console.log("Unsupported question type", qb);
+                continue;
+            }
+            
             switch (input.type) {
                 case "radio":
                 case "checkbox":
