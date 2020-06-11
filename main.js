@@ -8,9 +8,9 @@ const WS_REMOTE_URL = 'wss://deulmoo.herokuapp.com/';
 function getSocket() {
 
     const fSocketAsPromise = () => {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             this.working = true;
-            const ws = createNewSocket(WS_REMOTE_URL);
+            const ws = await createNewSocket(WS_REMOTE_URL);
             ws.onopen = () => {
                 // console.log("WS opened or reopened");
                 this.working = false;
@@ -43,8 +43,25 @@ function getSocket() {
     return this.promise = fSocketAsPromise().then(ws => this.ws = ws);
 }
 
-function createNewSocket(remote_url) {
-    const ws = new WebSocket(WS_REMOTE_URL);
+// Creates a new Websocket with the subscriptions to the currently displayed questions
+// Only onmessage event handled to update. Not necessarily OPEN
+// async because it needs to digest all questions on page first
+async function createNewSocket(remote_url) {
+    const question_blocks = getQuestionBlocks();
+    const topics = [];
+
+    for (const qb of question_blocks) {
+        try {
+            const qb_hash = await digestMessage(getQuestionBlockQuestionHTML(qb));
+            topics.push(qb_hash);
+        } catch(e) {
+            console.log("No question text? Skipping.", qb);
+        }
+    }
+
+    console.log("creating socket must subscribe to", topics);
+
+    const ws = new WebSocket(WS_REMOTE_URL + '?topics=' + topics.join(','));
     
     ws.onmessage = function (event) {
         const raw_payload = event.data;
@@ -299,6 +316,14 @@ function getParams(url) {
 }
 
 function getUniqueQuestioneeIdentifier() {
+    // Uncomment this to emulate multiple accounts on one PC
+
+    // function getRandomInt(max) {
+    //     return Math.floor(Math.random() * Math.floor(max));
+    //   }
+    //   if (!this.dbg) this.dbg = '' + getRandomInt(100);
+    // return this.dbg;
+
     return getParams(location.href).attempt;
 }
   
