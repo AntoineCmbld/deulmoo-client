@@ -12,7 +12,6 @@ function getSocket() {
             this.working = true;
             const ws = await createNewSocket(WS_REMOTE_URL);
             ws.onopen = () => {
-                // console.log("WS opened or reopened");
                 this.working = false;
                 resolve(ws);
             };
@@ -55,11 +54,9 @@ async function createNewSocket(remote_url) {
             const qb_hash = await digestMessage(getQuestionBlockQuestionHTML(qb));
             topics.push(qb_hash);
         } catch(e) {
-            console.log("No question text? Skipping.", qb);
+            console.log("No question text. Skipping.", qb);
         }
     }
-
-    console.log("creating socket must subscribe to", topics);
 
     const ws = new WebSocket(WS_REMOTE_URL + '?topics=' + topics.join(','));
     
@@ -174,8 +171,6 @@ async function getQuestionBlockFromDigest(digest) {
             html = getQuestionBlockQuestionHTML(qb);
             questionDigest = await digestMessage(html);
         } catch (e) {
-            console.warn(e);
-            console.log("Ignoring question block", qb);
             continue;
         }
 
@@ -200,10 +195,24 @@ async function getAnswerBlockFromDigest(question_block, digest) {
 // ====== SENDING DATA =======
 // ===========================
 
-function sendSelectedAnswers(questionDigest, answerDigests) {
+function sendSelectedAnswers(question_digest, answer_digests) {
     const message = JSON.stringify({
-        question: questionDigest,
-        answers: answerDigests,
+        question: question_digest,
+        answers: answer_digests,
+        vote_type: 'vote',
+        voter: getUniqueQuestioneeIdentifier()
+    });
+
+    getSocket().then(ws => ws.send(message));
+}
+
+function sendToggleVote(node, vote_type) {
+    const question_digest = node.parentNode.dataset['qd'];
+    const answer_digest = node.parentNode.dataset['ad'];
+    const message = JSON.stringify({
+        question: question_digest,
+        answer: answer_digest,
+        vote_type,
         voter: getUniqueQuestioneeIdentifier()
     });
 
@@ -214,22 +223,47 @@ function sendSelectedAnswers(questionDigest, answerDigests) {
 // ======= VIEW UPDATE =======
 // ===========================
 
-function ensureCountDOMForAnwserDOM(answer_block) {
+function ensureCountDOMForAnwserDOM(answer_block, pqhtml_digest, pahtml_digest) {
     const existing_dom = answer_block.getElementsByClassName("deulmoo-count-span");
 
     if (existing_dom.length <= 0) {
         // Create the counter DOM
         const span_dom = document.createElement('span');
         span_dom.className = 'deulmoo-count-span';
-        setAnswerCountNumber(span_dom, '..')
+        span_dom.dataset['vote'] = '0';
+        span_dom.dataset['upvote'] = '0';
+        span_dom.dataset['downvote'] = '0';
+        setAnswerCounterDisplayValue(span_dom, '0 votes');
+
+        pqhtml_digest.then(qd => span_dom.dataset['qd'] = qd);
+        pahtml_digest.then(ad => span_dom.dataset['ad'] = ad);
 
         answer_block.appendChild(span_dom);
+
+        // Update display everytime the dataset is updated
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach((mutation) => {
+                if (mutation.type == "attributes") {
+                    updateAnswerCounterDisplayValueFromDataset(mutation.target);
+                }
+            });
+        });
+
+        // Exclude CSS changes & assume digests will be ready
+        observer.observe(span_dom, {
+            attributes: true,
+            attributeFilter: [
+                'data-vote',
+                'data-upvote',
+                'data-downvote'
+            ]
+        });
+
+        
     }
 }
 
 function getCountDOMForAnswerDOM(answer_block) {
-    // Never too sure!
-    ensureCountDOMForAnwserDOM(answer_block);
     const existing_dom = answer_block.getElementsByClassName("deulmoo-count-span");
     if (existing_dom.length <= 0) {
         throw new Error('Could not find the counter..');
@@ -238,8 +272,39 @@ function getCountDOMForAnswerDOM(answer_block) {
     return existing_dom[0];
 }
 
-function setAnswerCountNumber(countDOM, value, prefix = ' ~ ') {
+function setAnswerCounterDisplayValue(countDOM, value, prefix = ' is ') {
     countDOM.innerText = prefix + value;
+}
+
+function updateAnswerCounterDisplayValueFromDataset(countDOM, prefix = ' is ') {
+    const vote_node = document.createElement('span');
+    vote_node.innerText = prefix + countDOM.dataset.vote + ' ';
+
+    const upvote_node = document.createElement('span');
+    upvote_node.innerText = countDOM.dataset.upvote + '↑';
+    upvote_node.onclick = e => sendToggleVote(e.target, 'upvote');
+
+    const downvote_node = document.createElement('span');
+    downvote_node.innerText = countDOM.dataset.downvote + '↓';
+    downvote_node.onclick = e => sendToggleVote(e.target, 'downvote');
+
+
+    countDOM.innerHTML = '';
+    countDOM.appendChild(vote_node);
+    countDOM.appendChild(upvote_node);
+    countDOM.appendChild(downvote_node);
+}
+
+// Attributes is an object, which keys will be mapped to the data- attribute
+function setAnswerCounterDataAttributes(countDOM, attributes) {
+    Object.keys(attributes).forEach(key => {
+        const value = attributes[key];
+
+        // Try triggering as few events as possible
+        if (countDOM.dataset[key] !== value) {
+            countDOM.dataset[key] = value;
+        }
+    });
 }
 
 function updateQuestions(payload) {
@@ -249,23 +314,32 @@ function updateQuestions(payload) {
         const question_block = await getQuestionBlockFromDigest(questionDigest);
 
         if (!question_block) {
-            // console.log('Question block not found: ', questionDigest);
             return;
         }
 
         for (const a of answers) {
             Object.keys(a).forEach(async aKey => {
                 const answerDigest = aKey;
-                const answer_votes = a[aKey];
                 const answer_block = await getAnswerBlockFromDigest(question_block, answerDigest);
+                const answer_votes = a[aKey].split(',');
 
                 if (!answer_block) {
-                    // console.log('Answer block not found: ', answerDigest);
                     return;
                 }
 
+                if (answer_votes.length !== 3) {
+                    console.warn("Received vote count not well formatted", a[aKey]);
+                    return;
+                }
+
+                const vote_types = {
+                    vote: answer_votes[0],
+                    upvote: answer_votes[1],
+                    downvote: answer_votes[2]
+                };
+
                 const answer_counter_block = getCountDOMForAnswerDOM(answer_block);
-                setAnswerCountNumber(answer_counter_block, answer_votes);
+                setAnswerCounterDataAttributes(answer_counter_block, vote_types);
             }) 
         }
     })
@@ -338,14 +412,13 @@ function main() {
     // listeners to them so you can submit your choices.
     // It will also create the DOM for the vote counter next to each answer
     for (const qb of question_blocks) {
-        let answers, qhtml;
+        let answers, qhtml, pqhtml_digest;
 
         try {
             answers = getQuestionBlockAnswersDOM(qb);
             qhtml = getQuestionBlockQuestionHTML(qb);
+            pqhtml_digest = digestMessage(qhtml);
         } catch (e) {
-            console.warn("Deulmoo error on init: ", e);
-            console.log("Skipping question block as a result:", qb);
             continue;
         }
         
@@ -376,17 +449,15 @@ function main() {
                     });
             }
 
-            // Create the count span for the answer
-            ensureCountDOMForAnwserDOM(a);
-
+            // For each answer (checkbox or radio) of the question block, we attach the callback
+            // which will go and check every other answer of the block
             const input = getQuestionBlockAnswersInputDOM(a);
-
             if (input === null) {
                 // This is not a QCM, but a text field or other
                 console.log("Unsupported question type", qb);
                 continue;
             }
-            
+
             switch (input.type) {
                 case "radio":
                 case "checkbox":
@@ -395,7 +466,16 @@ function main() {
 
                 default:
                     console.warn('Unsupported input type: ' + input.type);
+                    continue;
             }
+
+            // Create the count span for the answer
+            // We need to get the question & answer digests to put them in the dataset
+            // the delay should be relatively short, and it doesn't matter if other events
+            // finish first
+            const ahtml = getQuestionBlockAnswersHTML(a);
+            const pahtml_digest = digestMessage(ahtml);
+            ensureCountDOMForAnwserDOM(a, pqhtml_digest, pahtml_digest);
         }
 
     } // => end of main init loop
