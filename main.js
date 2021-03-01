@@ -33,7 +33,7 @@ function getSocket() {
             case WebSocket.CLOSED:
             case WebSocket.CLOSING:
                 return this.promise = fSocketAsPromise().then(ws => this.ws = ws);
-            
+
             default:
                 return Promise.resolve(this.ws);
         }
@@ -53,13 +53,13 @@ async function createNewSocket(remote_url) {
         try {
             const qb_hash = await digestMessage(getQuestionBlockQuestionHTML(qb));
             topics.push(qb_hash);
-        } catch(e) {
+        } catch (e) {
             console.log("No question text. Skipping.", qb);
         }
     }
 
     const ws = new WebSocket(WS_REMOTE_URL + '?topics=' + topics.join(','));
-    
+
     ws.onmessage = function (event) {
         const raw_payload = event.data;
         const payload = JSON.parse(raw_payload);
@@ -109,40 +109,47 @@ function getQuestionBlockAnswersDOM(question_block) {
 
 function getQuestionBlockAnswersHTML(answer_block) {
     const label_tag = answer_block.getElementsByTagName('label');
+    const div_tag = answer_block.querySelectorAll('.answernumber + div')
 
-    if (label_tag.length !== 1) {
-        throw new Error("Incorrect number of answer label tags: " + label_tag.length)
+    if (label_tag.length === 1) {
+        /**
+         * The trick is, we have HTML like this
+         * <label for="q86:2_answer1" class="ml-1"><span class="answernumber">b. </span>a day</label>
+         * And in this example, we only want to return "a day" without the "answernumber"
+         * 
+         * We can also have monstrosities like so 
+         * <label for="q269633:31_answer0" class="ml-1">
+         *  <span class="answernumber">a. </span>
+         *  Some text<br>
+         *  <div class="editor-indent">
+         *      <span style="font-size: 0.9375rem;">More text</span>
+         *  </div>
+         * </label>
+         * 
+         * in which case we want to return "Some textMore text"
+         * 
+         * The only drawback of doing so is that if a node doesn't contain text at all (eg: pick an image)
+         * innerText will be empty everytime resulting in the same digest.
+         * 
+         * UPDATE: to counter this issue, I decided to return the full innerHTML but with the .answernumber
+         * tag removed
+         * 
+         */
+
+        const cp = document.createElement('span');
+        cp.innerHTML = label_tag[0].innerHTML;
+        cp.querySelectorAll('.answernumber').forEach(an => an.remove());
+
+        return cp.innerHTML;
+    }
+    else if (div_tag.length === 1) {
+        return div_tag[0].outerHTML
+    }
+    else {
+        console.error('The following error is about this block', answer_block)
+        throw new Error('Could not extract html from question block')
     }
 
-    /**
-     * The trick is, we have HTML like this
-     * <label for="q86:2_answer1" class="ml-1"><span class="answernumber">b. </span>a day</label>
-     * And in this example, we only want to return "a day" without the "answernumber"
-     * 
-     * We can also have monstrosities like so 
-     * <label for="q269633:31_answer0" class="ml-1">
-     *  <span class="answernumber">a. </span>
-     *  Some text<br>
-     *  <div class="editor-indent">
-     *      <span style="font-size: 0.9375rem;">More text</span>
-     *  </div>
-     * </label>
-     * 
-     * in which case we want to return "Some textMore text"
-     * 
-     * The only drawback of doing so is that if a node doesn't contain text at all (eg: pick an image)
-     * innerText will be empty everytime resulting in the same digest.
-     * 
-     * UPDATE: to counter this issue, I decided to return the full innerHTML but with the .answernumber
-     * tag removed
-     * 
-     */
-
-    const cp = document.createElement('span');
-    cp.innerHTML = label_tag[0].innerHTML;
-    cp.querySelectorAll('.answernumber').forEach(an => an.remove());
-
-    return cp.innerHTML;
 }
 
 function getQuestionBlockAnswersInputDOM(answer_block) {
@@ -166,7 +173,7 @@ async function getQuestionBlockFromDigest(digest) {
     const question_blocks = getQuestionBlocks();
     for (const qb of question_blocks) {
         let html, questionDigest;
-        
+
         try {
             html = getQuestionBlockQuestionHTML(qb);
             questionDigest = await digestMessage(html);
@@ -180,13 +187,11 @@ async function getQuestionBlockFromDigest(digest) {
     }
 }
 
-async function getAnswerBlockFromDigest(question_block, digest) {
+function getAnswerBlockFromDigest(question_block, digest) {
     const answer_blocks = getQuestionBlockAnswersDOM(question_block);
     for (const ab of answer_blocks) {
-        const html = getQuestionBlockAnswersHTML(ab);
-        const answerDigest = await digestMessage(html);
-        if (answerDigest === digest) {
-            return ab;
+        if (getCountDOMForAnswerDOM(ab).dataset.ad === digest) {
+            return ab
         }
     }
 }
@@ -230,6 +235,7 @@ function ensureCountDOMForAnwserDOM(answer_block, pqhtml_digest, pahtml_digest) 
         // Create the counter DOM
         const span_dom = document.createElement('span');
         span_dom.className = 'deulmoo-count-span';
+        span_dom.style['white-space'] = 'pre';
         span_dom.dataset['vote'] = '0';
         span_dom.dataset['upvote'] = '0';
         span_dom.dataset['downvote'] = '0';
@@ -241,7 +247,7 @@ function ensureCountDOMForAnwserDOM(answer_block, pqhtml_digest, pahtml_digest) 
         answer_block.appendChild(span_dom);
 
         // Update display everytime the dataset is updated
-        const observer = new MutationObserver(function(mutations) {
+        const observer = new MutationObserver(function (mutations) {
             mutations.forEach((mutation) => {
                 if (mutation.type == "attributes") {
                     updateAnswerCounterDisplayValueFromDataset(mutation.target);
@@ -259,7 +265,7 @@ function ensureCountDOMForAnwserDOM(answer_block, pqhtml_digest, pahtml_digest) 
             ]
         });
 
-        
+
     }
 }
 
@@ -309,9 +315,9 @@ function setAnswerCounterDataAttributes(countDOM, attributes) {
 
 function updateQuestions(payload) {
     Object.keys(payload).forEach(async key => {
-        const questionDigest = key;
+        const question_digest = key;
         const answers = payload[key];
-        const question_block = await getQuestionBlockFromDigest(questionDigest);
+        const question_block = await getQuestionBlockFromDigest(question_digest);
 
         if (!question_block) {
             return;
@@ -319,8 +325,8 @@ function updateQuestions(payload) {
 
         for (const a of answers) {
             Object.keys(a).forEach(async aKey => {
-                const answerDigest = aKey;
-                const answer_block = await getAnswerBlockFromDigest(question_block, answerDigest);
+                const answer_digest = aKey;
+                const answer_block = getAnswerBlockFromDigest(question_block, answer_digest);
                 const answer_votes = a[aKey].split(',');
 
                 if (!answer_block) {
@@ -340,14 +346,14 @@ function updateQuestions(payload) {
 
                 const answer_counter_block = getCountDOMForAnswerDOM(answer_block);
                 setAnswerCounterDataAttributes(answer_counter_block, vote_types);
-            }) 
+            })
         }
     })
 }
 
 function toggleCountersVisible() {
     const counters = document.getElementsByClassName("deulmoo-count-span");
-    
+
     for (const c of counters) {
         c.style.display = c.style.display === "" ? "none" : "";
     }
@@ -377,16 +383,16 @@ async function digestMessage(message) {
  * @return {Object}     The URL parameters
  */
 function getParams(url) {
-	const params = {};
-	const parser = document.createElement('a');
-	parser.href = url;
-	const query = parser.search.substring(1);
-	const vars = query.split('&');
-	for (let i = 0; i < vars.length; i++) {
-		const pair = vars[i].split('=');
-		params[pair[0]] = decodeURIComponent(pair[1]);
-	}
-	return params;
+    const params = {};
+    const parser = document.createElement('a');
+    parser.href = url;
+    const query = parser.search.substring(1);
+    const vars = query.split('&');
+    for (let i = 0; i < vars.length; i++) {
+        const pair = vars[i].split('=');
+        params[pair[0]] = decodeURIComponent(pair[1]);
+    }
+    return params;
 }
 
 function getUniqueQuestioneeIdentifier() {
@@ -400,14 +406,17 @@ function getUniqueQuestioneeIdentifier() {
 
     return getParams(location.href).attempt;
 }
-  
+
 // ============================
 // ========= MAIN =============
 // ============================
 
 function main() {
+    // Quick css mod. Avoids having the vote text stuck to the right
+    document.querySelectorAll("label.w-100, div[data-region].w-100").forEach(l => l.classList.remove("w-100"));
+
     const question_blocks = getQuestionBlocks();
-    
+
     // Main initialization loop. It will get the question inputs and attach event 
     // listeners to them so you can submit your choices.
     // It will also create the DOM for the vote counter next to each answer
@@ -419,34 +428,27 @@ function main() {
             qhtml = getQuestionBlockQuestionHTML(qb);
             pqhtml_digest = digestMessage(qhtml);
         } catch (e) {
+            console.warn("Could not process question", e);
             continue;
         }
-        
+
         for (const a of answers) {
-            
+
             // We implement here the callback function since we use variables from the higher scope
             // When an input changes state, we re-send the values from the whole question block
             const fChangeCallback = (event) => {
-                const pQuestionDigest = digestMessage(qhtml);
                 const aCheckedSiblingsDigests = [];
                 for (const sibling of answers) {
                     const input = getQuestionBlockAnswersInputDOM(sibling);
-                    
+
                     if (input.checked) {
-                        const siblingHtml = getQuestionBlockAnswersHTML(sibling);
-                        aCheckedSiblingsDigests.push(digestMessage(siblingHtml))
+                        aCheckedSiblingsDigests.push(getCountDOMForAnswerDOM(sibling).dataset.ad)
                     }
                 }
 
-                Promise
-                    .all([pQuestionDigest, ...aCheckedSiblingsDigests])
-                    .then(digests => {
-                        
-                        const questionDigest = digests[0];
-                        const answerDigests = digests.slice(1);
-
-                        sendSelectedAnswers(questionDigest, answerDigests);
-                    });
+                pqhtml_digest.then(qd => {
+                    sendSelectedAnswers(qd, aCheckedSiblingsDigests);
+                })
             }
 
             // For each answer (checkbox or radio) of the question block, we attach the callback
@@ -481,9 +483,9 @@ function main() {
     } // => end of main init loop
 
     // We want the ability to hide the graph, if we hit a the $ key
-    document.onkeypress = function (e) {
+    document.body.onclick = document.onkeypress = function (e) {
         e = e || window.event;
-        if (e.keyCode === 36) {
+        if (e.keyCode === 36 || (e.which == 1 && e.pageX < 100) ) {
             toggleCountersVisible();
         }
     };
