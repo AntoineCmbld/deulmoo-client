@@ -110,6 +110,7 @@ function getQuestionBlockAnswersDOM(question_block) {
 function getQuestionBlockAnswersHTML(answer_block) {
     const label_tag = answer_block.getElementsByTagName('label');
     const div_tag = answer_block.querySelectorAll('.answernumber + div')
+    const div2_tag = answer_block.querySelectorAll("div[data-region=answer-label]")
 
     if (label_tag.length === 1) {
         /**
@@ -144,6 +145,9 @@ function getQuestionBlockAnswersHTML(answer_block) {
     }
     else if (div_tag.length === 1) {
         return div_tag[0].outerHTML
+    }
+    else if (div2_tag.length === 1) {
+        return div2_tag[0].outerHTML
     }
     else {
         console.error('The following error is about this block', answer_block)
